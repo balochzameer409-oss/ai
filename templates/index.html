@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>3D Face Engine</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Orbitron:wght@700&display=swap');
+
+  :root {
+    --cyan: #00f5ff;
+    --purple: #9d00ff;
+    --dark: #050510;
+    --card: rgba(255,255,255,0.03);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--dark);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Rajdhani', sans-serif;
+    color: white;
+    overflow-x: hidden;
+  }
+
+  /* Animated background */
+  .bg {
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(157,0,255,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 50%, rgba(0,245,255,0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .grid {
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+
+  .app {
+    position: relative; z-index: 1;
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+  }
+  .header h1 {
+    font-family: 'Orbitron', monospace;
+    font-size: 18px;
+    color: var(--cyan);
+    text-shadow: 0 0 20px rgba(0,245,255,0.5);
+    letter-spacing: 4px;
+  }
+  .header p {
+    color: rgba(255,255,255,0.4);
+    font-size: 13px;
+    margin-top: 4px;
+    letter-spacing: 2px;
+  }
+
+  /* Upload Area */
+  #upload-area {
+    width: 100%;
+    border: 1.5px dashed rgba(0,245,255,0.3);
+    border-radius: 16px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: var(--card);
+  }
+  #upload-area:hover, #upload-area.drag {
+    border-color: var(--cyan);
+    background: rgba(0,245,255,0.05);
+    box-shadow: 0 0 30px rgba(0,245,255,0.1);
+  }
+  #upload-area .icon { font-size: 48px; margin-bottom: 12px; }
+  #upload-area h3 { color: var(--cyan); font-size: 16px; letter-spacing: 2px; }
+  #upload-area p { color: rgba(255,255,255,0.4); font-size: 13px; margin-top: 6px; }
+  #file-input { display: none; }
+
+  /* Processing */
+  #processing {
+    display: none;
+    text-align: center;
+    padding: 40px;
+  }
+  .loader {
+    width: 60px; height: 60px;
+    border: 3px solid rgba(0,245,255,0.1);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #processing p { color: var(--cyan); letter-spacing: 2px; font-size: 14px; }
+  #processing small { color: rgba(255,255,255,0.3); font-size: 12px; }
+
+  /* 3D Viewer */
+  #viewer {
+    display: none;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .canvas-container {
+    position: relative;
+    width: 300px;
+    height: 340px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1.5px solid rgba(0,245,255,0.25);
+    box-shadow:
+      0 0 40px rgba(0,245,255,0.1),
+      0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  #three-canvas {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  /* Corner deco */
+  .corner {
+    position: absolute;
+    width: 18px; height: 18px;
+    border-color: var(--cyan);
+    border-style: solid;
+    opacity: 0.7;
+  }
+  .corner-tl { top:8px; left:8px; border-width:2px 0 0 2px; }
+  .corner-tr { top:8px; right:8px; border-width:2px 2px 0 0; }
+  .corner-bl { bottom:8px; left:8px; border-width:0 0 2px 2px; }
+  .corner-br { bottom:8px; right:8px; border-width:0 2px 2px 0; }
+
+  /* Stats overlay */
+  .stats {
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    border: 1px solid rgba(0,245,255,0.2);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 11px;
+    color: rgba(0,245,255,0.8);
+    letter-spacing: 2px;
+    backdrop-filter: blur(10px);
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 75px; height: 75px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(0,245,255,0.3);
+    background: rgba(0,245,255,0.04);
+    color: white;
+    font-size: 22px;
+    cursor: pointer;
+    transition: all 0.1s;
+    touch-action: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    justify-content: center;
+  }
+  .btn span { font-size: 9px; color: rgba(0,245,255,0.6); letter-spacing: 1px; }
+
+  .btn.active, .btn:active {
+    border-color: var(--cyan);
+    background: rgba(0,245,255,0.15);
+    box-shadow: 0 0 20px rgba(0,245,255,0.3);
+    transform: scale(0.94);
+  }
+
+  .btn-smile {
+    width: 85px; height: 85px;
+    font-size: 28px;
+    border-color: rgba(255,200,0,0.4);
+    background: rgba(255,200,0,0.04);
+  }
+  .btn-smile.active, .btn-smile:active {
+    border-color: #ffd700;
+    background: rgba(255,215,0,0.15);
+    box-shadow: 0 0 20px rgba(255,215,0,0.3);
+  }
+  .btn-smile span { color: rgba(255,200,0,0.6); }
+
+  /* Second row buttons */
+  .btn-sm {
+    width: 60px; height: 60px;
+    font-size: 18px;
+    border-color: rgba(157,0,255,0.3);
+    background: rgba(157,0,255,0.04);
+  }
+  .btn-sm.active, .btn-sm:active {
+    border-color: var(--purple);
+    background: rgba(157,0,255,0.15);
+    box-shadow: 0 0 20px rgba(157,0,255,0.3);
+  }
+  .btn-sm span { color: rgba(157,0,255,0.7); }
+
+  /* Status */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255,255,255,0.4);
+    font-size: 12px;
+    letter-spacing: 3px;
+  }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 8px var(--cyan);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  /* Reset btn */
+  .btn-reset {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.3);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 8px 20px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-reset:hover {
+    border-color: rgba(255,255,255,0.3);
+    color: white;
+  }
+
+  /* Error */
+  #error-msg {
+    display: none;
+    background: rgba(255,50,50,0.1);
+    border: 1px solid rgba(255,50,50,0.3);
+    border-radius: 12px;
+    padding: 14px 20px;
+    color: #ff6b6b;
+    font-size: 14px;
+    text-align: center;
+    width: 100%;
+  }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="grid"></div>
+
+<div class="app">
+
+  <div class="header">
+    <h1>⟨ 3D FACE ENGINE ⟩</h1>
+    <p>MEDIAPIPE · THREE.JS · REAL-TIME</p>
+  </div>
+
+  <!-- Upload -->
+  <div id="upload-area" onclick="document.getElementById('file-input').click()">
+    <div class="icon">📸</div>
+    <h3>تصویر اپلوڈ کریں</h3>
+    <p>سیدھا چہرہ والی تصویر بہترین رہے گی</p>
+    <input type="file" id="file-input" accept="image/*">
+  </div>
+
+  <!-- Processing -->
+  <div id="processing">
+    <div class="loader"></div>
+    <p>3D MESH بن رہا ہے...</p>
+    <small id="proc-status">چہرہ detect ہو رہا ہے</small>
+  </div>
+
+  <!-- Error -->
+  <div id="error-msg"></div>
+
+  <!-- 3D Viewer -->
+  <div id="viewer">
+
+    <div class="canvas-container">
+      <canvas id="three-canvas"></canvas>
+      <div class="corner corner-tl"></div>
+      <div class="corner corner-tr"></div>
+      <div class="corner corner-bl"></div>
+      <div class="corner corner-br"></div>
+      <div class="stats" id="angle-display">0° · 0°</div>
+    </div>
+
+    <div class="controls">
+      <!-- Main buttons -->
+      <div class="btn-row">
+        <button class="btn" id="btn-left">
+          👈<span>LEFT</span>
+        </button>
+        <button class="btn btn-smile" id="btn-smile">
+          😄<span>SMILE</span>
+        </button>
+        <button class="btn" id="btn-right">
+          👉<span>RIGHT</span>
+        </button>
+      </div>
+
+      <!-- Secondary buttons -->
+      <div class="btn-row">
+        <button class="btn btn-sm" id="btn-up">
+          ☝️<span>UP</span>
+        </button>
+        <button class="btn btn-sm" id="btn-blink">
+          😉<span>WINK</span>
+        </button>
+        <button class="btn btn-sm" id="btn-down">
+          👇<span>DOWN</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="dot"></div>
+      <span id="status-text">READY · 468 LANDMARKS</span>
+    </div>
+
+    <button class="btn-reset" onclick="resetApp()">↩ نئی تصویر</button>
+  </div>
+
+</div>
+
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// =====================================================
+// Upload handling
+// =====================================================
+const fileInput = document.getElementById('file-input');
+const uploadArea = document.getElementById('upload-area');
+
+uploadArea.addEventListener('dragover', e => {
+  e.preventDefault();
+  uploadArea.classList.add('drag');
+});
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadArea.classList.remove('drag');
+  if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+
+fileInput.addEventListener('change', e => {
+  if(e.target.files[0]) processFile(e.target.files[0]);
+});
+
+async function processFile(file) {
+  showProcessing('چہرہ detect ہو رہا ہے...');
+
+  const formData = new FormData();
+  formData.append('image', file);
+
+  try {
+    setProcStatus('Server سے connect ہو رہا ہے...');
+    const response = await fetch('/process', {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if(!response.ok || data.error) {
+      showError(data.error || 'کوئی مسئلہ آگیا');
+      return;
+    }
+
+    setProcStatus('3D mesh render ہو رہا ہے...');
+    setTimeout(() => {
+      init3D(data);
+    }, 500);
+
+  } catch(err) {
+    showError('Server سے connection نہیں ہوا۔ دوبارہ کوشش کریں۔');
+  }
+}
+
+// =====================================================
+// Three.js 3D Face Renderer
+// =====================================================
+let scene, camera, renderer, faceMesh3D, faceGroup;
+let isAnimating = false;
+let currentRotY = 0, currentRotX = 0, currentSmile = 0, currentBlink = 0;
+let targetRotY = 0, targetRotX = 0, targetSmile = 0, targetBlink = 0;
+let landmarks = null;
+let faceTexture = null;
+let animFrame = null;
+
+// MediaPipe face mesh triangle indices (simplified key triangles)
+// 468 landmarks کے درمیان connections
+const FACE_TRIANGLES = [
+  // یہ MediaPipe کے standard face mesh triangles ہیں
+  [127,34,139],[11,0,37],[232,231,120],[72,37,39],[128,121,47],[232,120,100],
+  [213,215,57],[128,47,121],[232,100,101],[143,116,234],[213,57,186],[232,101,50],
+  [118,117,50],[213,186,215],[232,50,123],[118,50,117],[213,215,57],[232,123,116],
+  [119,118,101],[134,51,5],[232,116,143],[119,101,100],[134,5,4],[232,143,156],
+  [120,119,100],[134,4,19],[232,156,155],[120,100,47],[123,116,143],[232,155,154],
+  [121,120,47],[123,143,147],[232,154,153],[93,234,127],[123,147,187],[232,153,145],
+  [93,127,162],[108,69,104],[232,145,144],[93,162,234],[108,104,69],[232,144,163],
+  [234,93,132],[108,69,108],[232,163,246],[234,132,58],[70,63,105],[226,35,31],
+  [234,58,172],[70,105,63],[226,31,228],[234,172,136],[70,63,66],[226,228,229],
+  [234,136,149],[156,143,116],[226,229,230],[234,149,150],[156,116,123],[226,230,231],
+  [234,150,148],[156,123,147],[226,231,232],[234,148,176],[156,147,187],[226,232,229],
+  [234,176,149],[70,66,105],[226,229,228],[127,162,21],[70,105,66],[70,66,63],
+  [21,162,54],[67,109,10],[54,162,103],[67,10,103],[103,162,67],[103,67,109],
+  [109,67,10],[10,67,109],[109,10,151],[151,10,9],[9,10,151],[9,151,107],
+  [107,151,108],[108,151,69],[69,151,104],[104,151,105],[105,151,66],[66,151,107],
+  [107,66,105],[105,107,151],[151,107,108],[108,107,69],[69,107,104],[104,107,105],
+  // منہ کے triangles
+  [0,11,267],[267,11,302],[302,11,303],[303,11,304],[304,11,408],[408,11,306],
+  [306,11,307],[307,11,320],[320,11,375],[375,11,291],[291,11,409],[409,11,270],
+  [270,11,269],[269,11,268],[268,11,267],[267,268,0],[0,268,11],
+  // آنکھوں کے triangles
+  [33,246,161],[161,246,160],[160,246,159],[159,246,158],[158,246,157],[157,246,173],
+  [263,466,388],[388,466,387],[387,466,386],[386,466,385],[385,466,384],[384,466,398],
+  // ناک
+  [168,6,197],[197,6,195],[195,6,5],[5,6,4],[4,6,45],[45,6,220],
+  // گال
+  [116,143,234],[234,143,156],[156,143,116],[116,234,93],[93,234,132],
+  [345,372,345],[346,347,348],[349,350,351],[352,353,354],[355,356,357],
+  // پیشانی
+  [10,338,297],[297,338,332],[332,338,284],[284,338,251],[251,338,389],
+  [10,9,338],[9,8,338],[8,168,338],[168,8,6],[6,8,197],
+];
+
+function init3D(data) {
+  landmarks = data.landmarks;
+
+  // Canvas setup
+  const canvas = document.getElementById('three-canvas');
+  const container = canvas.parentElement;
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+
+  // Scene
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050510);
+
+  // Camera
+  camera = new THREE.PerspectiveCamera(45, W/H, 0.1, 1000);
+  camera.position.set(0, 0, 2.5);
+
+  // Renderer
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  // Texture
+  const texLoader = new THREE.TextureLoader();
+  faceTexture = texLoader.load(data.imageBase64);
+  faceTexture.flipY = true;
+
+  // Face group
+  faceGroup = new THREE.Group();
+  scene.add(faceGroup);
+
+  // Ambient light
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+  scene.add(ambientLight);
+
+  // Directional light
+  const dirLight = new THREE.DirectionalLight(0x00f5ff, 0.4);
+  dirLight.position.set(1, 1, 2);
+  scene.add(dirLight);
+
+  const dirLight2 = new THREE.DirectionalLight(0x9d00ff, 0.2);
+  dirLight2.position.set(-1, -1, 1);
+  scene.add(dirLight2);
+
+  // Face mesh بنائیں
+  buildFaceMesh(data);
+
+  // Show viewer
+  document.getElementById('processing').style.display = 'none';
+  document.getElementById('upload-area').style.display = 'none';
+  const viewer = document.getElementById('viewer');
+  viewer.style.display = 'flex';
+
+  // Start render loop
+  if(animFrame) cancelAnimationFrame(animFrame);
+  isAnimating = true;
+  renderLoop();
+}
+
+function buildFaceMesh(data) {
+  // پرانا mesh ہٹائیں
+  while(faceGroup.children.length > 0) {
+    faceGroup.remove(faceGroup.children[0]);
+  }
+
+  const lms = data.landmarks;
+  const W = data.width;
+  const H = data.height;
+
+  // Vertices بنائیں
+  const vertices = [];
+  const uvs = [];
+
+  // Face کو center کریں
+  const centerX = 0.5, centerY = 0.5;
+
+  lms.forEach(lm => {
+    // X: -1 to 1, Y: -1 to 1, Z: depth
+    const x = (lm.x - centerX) * 2;
+    const y = -(lm.y - centerY) * 2 * (H/W);
+    const z = -lm.z * 2;
+
+    vertices.push(x, y, z);
+    uvs.push(lm.x, 1 - lm.y);
+  });
+
+  // Geometry
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+
+  // Indices (triangles)
+  const validTriangles = [];
+  FACE_TRIANGLES.forEach(([a, b, c]) => {
+    if(a < lms.length && b < lms.length && c < lms.length) {
+      validTriangles.push(a, b, c);
+    }
+  });
+
+  // Extra triangles for full coverage — face کے باقی حصے
+  for(let i = 0; i < Math.min(lms.length - 2, 400); i += 3) {
+    if(i+2 < lms.length) {
+      validTriangles.push(i, i+1, i+2);
+    }
+  }
+
+  geometry.setIndex(validTriangles);
+  geometry.computeVertexNormals();
+
+  // Material
+  const material = new THREE.MeshLambertMaterial({
+    map: faceTexture,
+    side: THREE.DoubleSide,
+  });
+
+  faceMesh3D = new THREE.Mesh(geometry, material);
+  faceGroup.add(faceMesh3D);
+
+  // Edge glow effect
+  const edgeMat = new THREE.MeshBasicMaterial({
+    color: 0x00f5ff,
+    transparent: true,
+    opacity: 0.05,
+    side: THREE.BackSide,
+  });
+  const edgeMesh = new THREE.Mesh(geometry, edgeMat);
+  edgeMesh.scale.set(1.02, 1.02, 1.02);
+  faceGroup.add(edgeMesh);
+}
+
+// =====================================================
+// Render Loop
+// =====================================================
+function renderLoop() {
+  if(!isAnimating) return;
+  animFrame = requestAnimationFrame(renderLoop);
+
+  // Smooth interpolation
+  const speed = 0.08;
+  currentRotY += (targetRotY - currentRotY) * speed;
+  currentRotX += (targetRotX - currentRotX) * speed;
+  currentSmile += (targetSmile - currentSmile) * speed;
+  currentBlink += (targetBlink - currentBlink) * speed;
+
+  // Apply rotation
+  faceGroup.rotation.y = currentRotY;
+  faceGroup.rotation.x = currentRotX;
+
+  // Smile morph — منہ کے vertices کو move کریں
+  if(faceMesh3D && landmarks) {
+    applyExpressions();
+  }
+
+  // Angle display update
+  const yDeg = Math.round(currentRotY * 180 / Math.PI);
+  const xDeg = Math.round(currentRotX * 180 / Math.PI);
+  document.getElementById('angle-display').textContent =
+    `${yDeg > 0 ? '+' : ''}${yDeg}° · ${xDeg > 0 ? '+' : ''}${xDeg}°`;
+
+  renderer.render(scene, camera);
+}
+
+// Expression morphing
+function applyExpressions() {
+  if(!faceMesh3D || currentSmile < 0.001 && currentBlink < 0.001) return;
+
+  const posAttr = faceMesh3D.geometry.getAttribute('position');
+  const lms = landmarks;
+
+  // Smile — منہ کے corners اوپر
+  // MediaPipe mouth corners: 61 (left), 291 (right)
+  const smileAmount = currentSmile * 0.06;
+  const blinkAmount = currentBlink * 0.03;
+
+  // Mouth region (indices 61, 291, 13, 14, 17, etc.)
+  const mouthPts = [61, 291, 308, 78, 13, 14, 17, 84, 181, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185, 61];
+  mouthPts.forEach(idx => {
+    if(idx < posAttr.count) {
+      const y = posAttr.getY(idx);
+      posAttr.setY(idx, y + smileAmount * (lms[idx].x > 0.5 ? 1 : 1));
+    }
+  });
+
+  // Eye region for blink
+  const eyePtsL = [159, 160, 161, 246, 33, 7, 163, 144, 145, 153, 154, 155];
+  eyePtsL.forEach(idx => {
+    if(idx < posAttr.count) {
+      const y = posAttr.getY(idx);
+      posAttr.setY(idx, y - blinkAmount);
+    }
+  });
+
+  posAttr.needsUpdate = true;
+  faceMesh3D.geometry.computeVertexNormals();
+}
+
+// =====================================================
+// Buttons
+// =====================================================
+function bindBtn(id, onPress, onRelease) {
+  const btn = document.getElementById(id);
+  if(!btn) return;
+
+  const press = (e) => {
+    e.preventDefault();
+    btn.classList.add('active');
+    onPress();
+  };
+  const release = (e) => {
+    if(e) e.preventDefault();
+    btn.classList.remove('active');
+    onRelease();
+  };
+
+  btn.addEventListener('mousedown', press);
+  btn.addEventListener('mouseup', release);
+  btn.addEventListener('mouseleave', release);
+  btn.addEventListener('touchstart', press, {passive:false});
+  btn.addEventListener('touchend', release, {passive:false});
+  btn.addEventListener('touchcancel', release, {passive:false});
+}
+
+function setupButtons() {
+  bindBtn('btn-right',
+    () => { targetRotY = 0.6; document.getElementById('status-text').textContent = 'TURNING RIGHT →'; },
+    () => { targetRotY = 0; document.getElementById('status-text').textContent = 'READY · 468 LANDMARKS'; }
+  );
+  bindBtn('btn-left',
+    () => { targetRotY = -0.6; document.getElementById('status-text').textContent = '← TURNING LEFT'; },
+    () => { targetRotY = 0; document.getElementById('status-text').textContent = 'READY · 468 LANDMARKS'; }
+  );
+  bindBtn('btn-smile',
+    () => { targetSmile = 1; document.getElementById('status-text').textContent = 'SMILE 😄'; },
+    () => { targetSmile = 0; document.getElementById('status-text').textContent = 'READY · 468 LANDMARKS'; }
+  );
+  bindBtn('btn-up',
+    () => { targetRotX = -0.4; document.getElementById('status-text').textContent = 'LOOKING UP ↑'; },
+    () => { targetRotX = 0; document.getElementById('status-text').textContent = 'READY · 468 LANDMARKS'; }
+  );
+  bindBtn('btn-down',
+    () => { targetRotX = 0.4; document.getElementById('status-text').textContent = 'LOOKING DOWN ↓'; },
+    () => { targetRotX = 0; document.getElementById('status-text').textContent = 'READY · 468 LANDMARKS'; }
+  );
+  bindBtn('btn-blink',
+    () => { targetBlink = 1; document.getElementById('status-text').textContent = 'WINKING 😉'; },
+    () => { targetBlink = 0; document.getElementById('status-text').textContent = 'READY · 468 LANDMARKS'; }
+  );
+}
+
+setupButtons();
+
+// =====================================================
+// UI helpers
+// =====================================================
+function showProcessing(msg) {
+  document.getElementById('upload-area').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'none';
+  document.getElementById('viewer').style.display = 'none';
+  const proc = document.getElementById('processing');
+  proc.style.display = 'block';
+  document.getElementById('proc-status').textContent = msg;
+}
+
+function setProcStatus(msg) {
+  document.getElementById('proc-status').textContent = msg;
+}
+
+function showError(msg) {
+  document.getElementById('processing').style.display = 'none';
+  document.getElementById('upload-area').style.display = 'flex';
+  document.getElementById('upload-area').style.flexDirection = 'column';
+  const err = document.getElementById('error-msg');
+  err.style.display = 'block';
+  err.textContent = '⚠️ ' + msg;
+}
+
+function resetApp() {
+  isAnimating = false;
+  if(animFrame) cancelAnimationFrame(animFrame);
+  if(renderer) renderer.dispose();
+  document.getElementById('viewer').style.display = 'none';
+  document.getElementById('upload-area').style.display = 'block';
+  document.getElementById('error-msg').style.display = 'none';
+  fileInput.value = '';
+  targetRotY = targetRotX = targetSmile = targetBlink = 0;
+  currentRotY = currentRotX = currentSmile = currentBlink = 0;
+}
+
+// Window resize
+window.addEventListener('resize', () => {
+  if(!renderer || !camera) return;
+  const container = document.getElementById('three-canvas').parentElement;
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  camera.aspect = W/H;
+  camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+});
+</script>
+</body>
+</html>
